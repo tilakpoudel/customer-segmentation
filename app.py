@@ -92,7 +92,7 @@ st.sidebar.title("🛠️ Control Panel")
 
 data_source = st.sidebar.radio(
     "Data Source", 
-    ["Upload File", "Use UCI Dataset (Real)", "Generate Random Data"]
+    ["Upload Your Own (.csv, .xlsx)", "Use UCI Dataset (Real)", "Generate Random Data"]
 )
 
 # Sidebar Download Template (Displayed above uploader)
@@ -115,10 +115,16 @@ with st.sidebar.expander("📝 Data Format Help", expanded=False):
     st.markdown("**Source Dataset:**")
     st.link_button("🔗 UCI Online Retail Dataset", "https://archive.ics.uci.edu/dataset/352/online+retail")
 
-
 uploaded_file = None
-if data_source == "Upload File":
-    uploaded_file = st.sidebar.file_uploader("Upload Online Retail XLSX or CSV", type=["xlsx", "csv"])
+if data_source == "Upload Your Own (.csv, .xlsx)":
+    uploaded_file = st.sidebar.file_uploader(
+        "Upload Online Retail XLSX or CSV", 
+        type=["xlsx", "csv"],
+        help="Max file size: 200MB"
+    )
+    if uploaded_file and uploaded_file.size > 200 * 1024 * 1024:
+        st.sidebar.error("❌ File too large. Please upload a file smaller than 200MB.")
+        uploaded_file = None
 
 st.sidebar.markdown("---")
 st.sidebar.subheader("🧮 Clustering Parameters")
@@ -144,7 +150,7 @@ use_r = st.sidebar.checkbox("Recency", value=True, help="Days since the customer
 use_f = st.sidebar.checkbox("Frequency", value=True, help="Total number of unique orders made.")
 use_m = st.sidebar.checkbox("Monetary", value=True, help="Total revenue generated from this customer.")
 
-run_button = st.sidebar.button("🚀 Run Fuzzy Clustering", width="stretch")
+run_button = st.sidebar.button("🚀 Start Segmentation Analysis", width="stretch")
 
 st.sidebar.markdown("---")
 st.sidebar.caption("⚖️ **Disclaimer**: This tool is for analytical purposes. Results should be validated by stakeholders before making financial commitments.")
@@ -159,103 +165,113 @@ with st.expander("📖 How to use this App", expanded=True):
     Welcome! This tool uses **Fuzzy Logic** to segment your customers based on their buying behavior (**RFM Analysis**).
     
     ### 🛠️ Quick Start
-    1. **Choose Data**: Select 'Use Sample Data' in the sidebar or upload your own CSV/XLSX.
-    2. **Set Clusters**: Use the slider to pick how many groups (k) you want to identify.
-    3. **Run Analysis**: Click the **🚀 Run** button in the sidebar.
-    
-    ### 🔍 What do the tabs show?
-    - **📊 Data & RFM**: Your raw transactions converted into Recency, Frequency, and Monetary scores.
-    - **🔬 Clustering Results**: The main grouping of your customers.
-    - **🗺️ Membership Analysis**: Discover 'Ambiguous' customers who sit between two segments.
-    - **👤 Predict Customer**: Enter data for a new customer to see which segment they join.
-    - **💡 Business Insights**: Revenue-at-risk and specific marketing recommendations.
-    - **⚖️ Model Comparison**: Comparison between this model and standard K-Means.
+    1. **Choose Data Source**: Select an option in the sidebar (UCI Dataset is best for first-time use).
+    2. **Set Parameters**: Adjust the number of clusters (k) and Fuzziness (m).
+    3. **Run Analysis**: Click **'🚀 Start Segmentation Analysis'** in the sidebar.
     """)
 
-
-# Load Data
-df_raw = None
-if data_source == "Generate Random Data":
-    df_raw = get_sample_data()
-elif data_source == "Use UCI Dataset (Real)":
+# We want to wait for the run_button to do everything
+if run_button:
+    df_raw = None
+    
+    # 1. Load Data
     try:
-        with st.spinner("Loading real-world dataset..."):
+        if data_source == "Generate Random Data":
+            df_raw = get_sample_data()
+        elif data_source == "Use UCI Dataset (Real)":
             df_raw = pd.read_excel(DEFAULT_DATA_PATH)
-    except Exception as e:
-        st.error(f"Error loading local sample file: {e}")
-        st.info("Please ensure 'Online Retail.xlsx' exists in the /data folder.")
-        st.stop()
-elif uploaded_file:
-
-    try:
-        if uploaded_file.name.endswith(".xlsx"):
-            df_raw = pd.read_excel(uploaded_file)
-        else:
-            df_raw = pd.read_csv(uploaded_file)
+        elif uploaded_file:
+            if uploaded_file.name.endswith(".xlsx"):
+                df_raw = pd.read_excel(uploaded_file)
+            else:
+                df_raw = pd.read_csv(uploaded_file)
             
-        # Fix PyArrow/Streamlit serialization issues for mixed-type columns
-        for col in ["StockCode", "Description"]:
-            if col in df_raw.columns:
-                df_raw[col] = df_raw[col].astype(str)
-                
-        if not validate_columns(df_raw):
-            df_raw = None
+            # Fix PyArrow/Streamlit serialization issues
+            for col in ["StockCode", "Description"]:
+                if col in df_raw.columns:
+                    df_raw[col] = df_raw[col].astype(str)
+        else:
+            st.warning("Please upload a file or select a data source.")
             st.stop()
+            
+        if df_raw is not None:
+            if not validate_columns(df_raw):
+                st.stop()
     except Exception as e:
-        st.error(f"Error reading file: {e}")
-else:
-    st.info("👋 Welcome! Please upload a dataset or select 'Use Sample Data' in the sidebar to begin.")
-    st.stop()
+        st.error(f"❌ Error loading data: {e}")
+        st.stop()
 
-if df_raw is not None:
-    # Preprocessing
-    with st.spinner("Cleaning data and computing RFM..."):
-        rfm_df = cached_preprocessing(df_raw)
+    # 2. Process Data
+    if df_raw is not None:
+        try:
+            # Preprocessing
+            with st.spinner("Cleaning data and computing RFM..."):
+                rfm_df = cached_preprocessing(df_raw)
+            
+            # Feature filtering
+            features = []
+            if use_r: features.append(RFM_CONFIG["recency_col"])
+            if use_f: features.append(RFM_CONFIG["frequency_col"])
+            if use_m: features.append(RFM_CONFIG["monetary_col"])
+            
+            if not features:
+                st.warning("Please select at least one feature in the sidebar.")
+                st.stop()
+                
+            rfm_subset = rfm_df[features]
+            
+            # Normalization
+            normalized_df, scaler = normalize_rfm(rfm_subset, log_transform=RFM_CONFIG["log_transform"])
+            
+            # Run Clustering
+            model_params = {
+                "n_clusters": k,
+                "fuzziness": m,
+                "max_iter": CLUSTERING["max_iter"],
+                "error": CLUSTERING["error_tolerance"],
+                "random_state": CLUSTERING["random_state"]
+            }
+            
+            result = cached_model_execution(normalized_df.values, model_params)
+            cluster_meta = label_clusters(result.centers, features)
+            cluster_names = [f"Cluster {i}: {m['label']}" for i, m in enumerate(cluster_meta)]
+            
+            ambiguous_df = get_ambiguous_customers(result.membership_matrix, rfm_df.index, AMBIGUITY_THRESHOLD)
+            summary = generate_business_summary(rfm_df, result.labels, cluster_meta, len(ambiguous_df))
+            
+            # Store in session state
+            st.session_state.analysis_results = {
+                "df_raw": df_raw,
+                "rfm_df": rfm_df,
+                "normalized_df": normalized_df,
+                "result": result,
+                "cluster_meta": cluster_meta,
+                "cluster_names": cluster_names,
+                "ambiguous_df": ambiguous_df,
+                "summary": summary,
+                "features": features,
+                "scaler": scaler
+            }
+        except Exception as e:
+            st.error(f"Clustering failed: {e}")
+            logger.exception("Clustering error")
+            st.stop()
+
+# --- Display Logic ---
+if "analysis_results" in st.session_state and st.session_state.analysis_results is not None:
+    res = st.session_state.analysis_results
     
-    # Feature filtering
-    features = []
-    if use_r: features.append(RFM_CONFIG["recency_col"])
-    if use_f: features.append(RFM_CONFIG["frequency_col"])
-    if use_m: features.append(RFM_CONFIG["monetary_col"])
-    
-    if not features:
-        st.warning("Please select at least one feature in the sidebar.")
-        st.stop()
-        
-    rfm_subset = rfm_df[features]
-    
-    # Normalization
-    normalized_df, scaler = normalize_rfm(rfm_subset, log_transform=RFM_CONFIG["log_transform"])
-    
-    # Run Clustering
-    model_params = {
-        "n_clusters": k,
-        "fuzziness": m,
-        "max_iter": CLUSTERING["max_iter"],
-        "error": CLUSTERING["error_tolerance"],
-        "random_state": CLUSTERING["random_state"]
-    }
-    
-    try:
-        result = cached_model_execution(normalized_df.values, model_params)
-        cluster_meta = label_clusters(result.centers, features)
-        cluster_names = [f"Cluster {i}: {m['label']}" for i, m in enumerate(cluster_meta)]
-        
-        # Ambiguous Customers
-        ambiguous_df = get_ambiguous_customers(
-            result.membership_matrix, 
-            rfm_df.index, 
-            AMBIGUITY_THRESHOLD
-        )
-        
-        # Business Summary
-        summary = generate_business_summary(
-            rfm_df, result.labels, cluster_meta, len(ambiguous_df)
-        )
-    except Exception as e:
-        st.error(f"Clustering failed: {e}")
-        logger.exception("Clustering error")
-        st.stop()
+    # Re-assign variables
+    df_raw = res["df_raw"]
+    rfm_df = res["rfm_df"]
+    normalized_df = res["normalized_df"]
+    result = res["result"]
+    cluster_meta = res["cluster_meta"]
+    cluster_names = res["cluster_names"]
+    ambiguous_df = res["ambiguous_df"]
+    summary = res["summary"]
+    features = res["features"]
+    scaler = res["scaler"]
 
     # --- Tabs ---
     tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
@@ -368,7 +384,7 @@ if df_raw is not None:
                        "Avoid aggressive targeting; instead, use a 'Soft Discovery' campaign to learn more about their preferences.")
         else:
             st.success("Your customer base is well-segmented with low ambiguity!")
-
+            
     with tab6:
         st.subheader("Fuzzy C-Means vs K-Means Comparison")
         st.markdown("""
@@ -414,4 +430,5 @@ if df_raw is not None:
             - Identifies 'Ambiguous' customers (those with ~0.5 membership in two groups).
             - Provides a more nuanced view of customer transitions.
             """)
-
+else:
+    st.info("👋 **Ready to begin?** Adjust your settings in the sidebar and click **'🚀 Start Segmentation Analysis'** to generate insights.")
