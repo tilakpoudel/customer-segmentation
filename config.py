@@ -6,7 +6,7 @@ import pathlib
 # Paths
 BASE_DIR = pathlib.Path(__file__).parent
 DATA_DIR = BASE_DIR / "data"
-DEFAULT_DATA_PATH = DATA_DIR / "online_retail.xlsx"
+DEFAULT_DATA_PATH = DATA_DIR / "Online Retail.xlsx"
 
 # Clustering Parameters
 CLUSTERING = {

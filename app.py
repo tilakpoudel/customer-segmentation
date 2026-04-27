@@ -10,6 +10,7 @@ from datetime import datetime
 from config import (
     AMBIGUITY_THRESHOLD,
     CLUSTERING,
+    DEFAULT_DATA_PATH,
     PAGE_CONFIG,
     RFM as RFM_CONFIG
 )
@@ -89,7 +90,10 @@ def cached_kmeans_execution(data: np.ndarray, k: int):
 # --- Sidebar ---
 st.sidebar.title("🛠️ Control Panel")
 
-data_source = st.sidebar.radio("Data Source", ["Upload File", "Use Sample Data"])
+data_source = st.sidebar.radio(
+    "Data Source", 
+    ["Upload File", "Use UCI Dataset (Real)", "Generate Random Data"]
+)
 
 # Sidebar Download Template (Displayed above uploader)
 with st.sidebar.expander("📝 Data Format Help", expanded=False):
@@ -106,6 +110,11 @@ with st.sidebar.expander("📝 Data Format Help", expanded=False):
         width="stretch",
         help="Download this template to see the required column names and formats."
     )
+    
+    st.markdown("---")
+    st.markdown("**Source Dataset:**")
+    st.link_button("🔗 UCI Online Retail Dataset", "https://archive.ics.uci.edu/dataset/352/online+retail")
+
 
 uploaded_file = None
 if data_source == "Upload File":
@@ -166,9 +175,18 @@ with st.expander("📖 How to use this App", expanded=True):
 
 # Load Data
 df_raw = None
-if data_source == "Use Sample Data":
+if data_source == "Generate Random Data":
     df_raw = get_sample_data()
+elif data_source == "Use UCI Dataset (Real)":
+    try:
+        with st.spinner("Loading real-world dataset..."):
+            df_raw = pd.read_excel(DEFAULT_DATA_PATH)
+    except Exception as e:
+        st.error(f"Error loading local sample file: {e}")
+        st.info("Please ensure 'Online Retail.xlsx' exists in the /data folder.")
+        st.stop()
 elif uploaded_file:
+
     try:
         if uploaded_file.name.endswith(".xlsx"):
             df_raw = pd.read_excel(uploaded_file)
