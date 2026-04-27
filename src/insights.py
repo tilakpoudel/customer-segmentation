@@ -35,19 +35,21 @@ def label_clusters(centers: np.ndarray, feature_names: list[str]) -> list[dict]:
     for i in range(k):
         center = centers[i]
         
-        # Determine boolean status for each feature
-        # Recency: Lower is better. So 'High' (True) means value <= median.
-        # Frequency/Monetary: Higher is better. So 'High' (True) means value >= median.
+        # Initialize (Recency, Frequency, Monetary) status
+        # If a feature is missing, we default to True (Good) so it doesn't 
+        # penalize the segment label.
+        status = [True, True, True]
         
-        is_high = []
         for idx, name in enumerate(feature_names):
             if "Recency" in name:
-                is_high.append(center[idx] <= medians[idx])
-            else:
-                is_high.append(center[idx] >= medians[idx])
+                status[0] = (center[idx] <= medians[idx])
+            elif "Frequency" in name:
+                status[1] = (center[idx] >= medians[idx])
+            elif "Monetary" in name:
+                status[2] = (center[idx] >= medians[idx])
         
         # Convert to tuple for dictionary lookup
-        key = tuple(is_high)
+        key = tuple(status)
         meta = SEGMENT_LABELS.get(key, SEGMENT_LABELS[(False, False, False)]).copy()
         meta["center_values"] = center
         cluster_meta.append(meta)
