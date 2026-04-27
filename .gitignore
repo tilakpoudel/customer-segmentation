@@ -160,3 +160,6 @@ data/online_retail.xlsx
 data/*.csv
 data/*.xlsx
 rfm_template.csv
+
+# macOS
+.DS_Store
