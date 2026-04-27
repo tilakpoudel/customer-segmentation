@@ -2,6 +2,8 @@
 
 A production-grade Streamlit application for advanced customer segmentation using **RFM Analysis** and **Fuzzy C-Means Clustering**.
 
+[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://customer-segmentation-fuzzy.streamlit.app/)
+
 ## 📖 Overview
 
 This project transforms raw transactional data into actionable business strategy. Unlike traditional clustering (K-Means), which assigns customers to a single group, this application uses **Fuzzy Logic** to determine "membership degrees." This allows businesses to identify "ambiguous" customers who sit between segments, enabling more nuanced marketing campaigns.
@@ -13,6 +15,7 @@ This project transforms raw transactional data into actionable business strategy
 - **Ambiguity Detection**: Identify customers who don't strongly belong to any cluster for specialized targeting.
 - **Interactive Visualizations**: High-quality Plotly charts including cluster scatter plots, membership heatmaps, and distribution violin plots.
 - **Predictive Segmenting**: Real-time cluster assignment for hypothetical new customers.
+- **Model Comparison**: Side-by-side evaluation against standard K-Means to demonstrate the value of "soft" clustering.
 - **Strategic Insights**: Automated segment labeling (e.g., Champions, At-Risk) with tailored business recommendations.
 
 ## 🛠️ Tech Stack
@@ -38,6 +41,7 @@ customer_segmentation/
     ├── fuzzy_model.py      # Clustering logic & Fuzzy Result container
     ├── visualization.py    # Plotly chart builders
     ├── insights.py         # Business logic & recommendation engine
+    ├── comparisons.py      # K-Means vs FCM comparison logic
     └── utils.py            # Shared helpers (logging, formatting)
 ```
 

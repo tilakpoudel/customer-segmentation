@@ -103,7 +103,8 @@ with st.sidebar.expander("📝 Data Format Help", expanded=False):
         data=template_csv,
         file_name="rfm_template.csv",
         mime="text/csv",
-        width="stretch"
+        width="stretch",
+        help="Download this template to see the required column names and formats."
     )
 
 uploaded_file = None
@@ -116,27 +117,52 @@ k = st.sidebar.slider(
     "Number of clusters (k)", 
     CLUSTERING["k_min"], 
     CLUSTERING["k_max"], 
-    CLUSTERING["default_k"]
+    CLUSTERING["default_k"],
+    help="k is the number of groups you want to split your customers into."
 )
 m = st.sidebar.slider(
     "Fuzziness (m)", 
     CLUSTERING["m_min"], 
     CLUSTERING["m_max"], 
     CLUSTERING["default_m"],
-    step=0.1
+    step=0.1,
+    help="Higher values allow more overlap between clusters. 2.0 is the standard."
 )
 
 st.sidebar.markdown("---")
 st.sidebar.subheader("🎯 Feature Selection")
-use_r = st.sidebar.checkbox("Recency", value=True)
-use_f = st.sidebar.checkbox("Frequency", value=True)
-use_m = st.sidebar.checkbox("Monetary", value=True)
+use_r = st.sidebar.checkbox("Recency", value=True, help="Days since the customer's last purchase.")
+use_f = st.sidebar.checkbox("Frequency", value=True, help="Total number of unique orders made.")
+use_m = st.sidebar.checkbox("Monetary", value=True, help="Total revenue generated from this customer.")
 
 run_button = st.sidebar.button("🚀 Run Fuzzy Clustering", width="stretch")
+
+st.sidebar.markdown("---")
+st.sidebar.caption("⚖️ **Disclaimer**: This tool is for analytical purposes. Results should be validated by stakeholders before making financial commitments.")
+
 
 # --- Main Logic ---
 st.title("🎯 Customer Segmentation")
 st.markdown("### Production-Grade Fuzzy C-Means Clustering on RFM Data")
+
+with st.expander("📖 How to use this App", expanded=True):
+    st.markdown("""
+    Welcome! This tool uses **Fuzzy Logic** to segment your customers based on their buying behavior (**RFM Analysis**).
+    
+    ### 🛠️ Quick Start
+    1. **Choose Data**: Select 'Use Sample Data' in the sidebar or upload your own CSV/XLSX.
+    2. **Set Clusters**: Use the slider to pick how many groups (k) you want to identify.
+    3. **Run Analysis**: Click the **🚀 Run** button in the sidebar.
+    
+    ### 🔍 What do the tabs show?
+    - **📊 Data & RFM**: Your raw transactions converted into Recency, Frequency, and Monetary scores.
+    - **🔬 Clustering Results**: The main grouping of your customers.
+    - **🗺️ Membership Analysis**: Discover 'Ambiguous' customers who sit between two segments.
+    - **👤 Predict Customer**: Enter data for a new customer to see which segment they join.
+    - **💡 Business Insights**: Revenue-at-risk and specific marketing recommendations.
+    - **⚖️ Model Comparison**: Comparison between this model and standard K-Means.
+    """)
+
 
 # Load Data
 df_raw = None
