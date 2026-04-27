@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 
 from config import COLOR_PALETTE, PLOTLY_TEMPLATE
 
@@ -121,4 +122,59 @@ def plot_rfm_distributions(rfm_df: pd.DataFrame) -> go.Figure:
         yaxis_title="Frequency"
     )
     fig.update_traces(opacity=0.75)
+    return fig
+
+def plot_model_comparison(
+    rfm_df: pd.DataFrame, 
+    labels_fcm: np.ndarray, 
+    labels_kmeans: np.ndarray, 
+    feature_x: str, 
+    feature_y: str
+) -> go.Figure:
+    """Create side-by-side scatter plots comparing FCM and K-Means labels."""
+    fig = make_subplots(
+        rows=1, cols=2, 
+        subplot_titles=("Fuzzy C-Means (Soft)", "K-Means (Hard)"),
+        shared_yaxes=True,
+        horizontal_spacing=0.05
+    )
+    
+    # Fuzzy C-Means Plot
+    for i in np.unique(labels_fcm):
+        mask = labels_fcm == i
+        fig.add_trace(
+            go.Scatter(
+                x=rfm_df.iloc[mask][feature_x],
+                y=rfm_df.iloc[mask][feature_y],
+                mode='markers',
+                name=f'FCM Cluster {i}',
+                marker=dict(color=COLOR_PALETTE[i % len(COLOR_PALETTE)], opacity=0.6),
+                showlegend=True
+            ),
+            row=1, col=1
+        )
+        
+    # K-Means Plot
+    for i in np.unique(labels_kmeans):
+        mask = labels_kmeans == i
+        fig.add_trace(
+            go.Scatter(
+                x=rfm_df.iloc[mask][feature_x],
+                y=rfm_df.iloc[mask][feature_y],
+                mode='markers',
+                name=f'KM Cluster {i}',
+                marker=dict(color=COLOR_PALETTE[i % len(COLOR_PALETTE)], opacity=0.6),
+                showlegend=False
+            ),
+            row=1, col=2
+        )
+        
+    fig.update_layout(
+        title=f"Clustering Comparison: {feature_x} vs {feature_y}",
+        template=PLOTLY_TEMPLATE,
+        height=500,
+        xaxis_title=feature_x,
+        yaxis_title=feature_y,
+        xaxis2_title=feature_x
+    )
     return fig

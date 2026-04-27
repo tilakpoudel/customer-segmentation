@@ -27,8 +27,10 @@ from src.visualization import (
     plot_membership_distribution,
     plot_membership_heatmap,
     plot_rfm_distributions,
-    plot_scatter_clusters
+    plot_scatter_clusters,
+    plot_model_comparison
 )
+from src.comparisons import run_kmeans, calculate_agreement
 
 # Initialize logging
 logger = setup_logging()
@@ -78,6 +80,11 @@ def cached_preprocessing(df: pd.DataFrame) -> pd.DataFrame:
 def cached_model_execution(data: np.ndarray, params: dict):
     """Run fuzzy clustering and cache the result object."""
     return run_fuzzy_cmeans(data, **params)
+
+@st.cache_resource
+def cached_kmeans_execution(data: np.ndarray, k: int):
+    """Run k-means clustering and cache the result object."""
+    return run_kmeans(data, k)
 
 # --- Sidebar ---
 st.sidebar.title("🛠️ Control Panel")
@@ -207,12 +214,13 @@ if df_raw is not None:
         st.stop()
 
     # --- Tabs ---
-    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
         "📊 Data & RFM", 
         "🔬 Clustering Results", 
         "🗺️ Membership Analysis", 
         "👤 Predict Customer", 
-        "💡 Business Insights"
+        "💡 Business Insights",
+        "⚖️ Model Comparison"
     ])
 
     with tab1:
@@ -316,3 +324,50 @@ if df_raw is not None:
                        "Avoid aggressive targeting; instead, use a 'Soft Discovery' campaign to learn more about their preferences.")
         else:
             st.success("Your customer base is well-segmented with low ambiguity!")
+
+    with tab6:
+        st.subheader("Fuzzy C-Means vs K-Means Comparison")
+        st.markdown("""
+        This section compares **Soft Clustering (Fuzzy C-Means)** with **Hard Clustering (K-Means)**. 
+        In a portfolio, this demonstrates your understanding of model trade-offs.
+        """)
+        
+        # Run K-Means for comparison
+        with st.spinner("Running K-Means for comparison..."):
+            km_result = cached_kmeans_execution(normalized_df.values, k)
+            agreement = calculate_agreement(result.labels, km_result.labels)
+
+        # Metrics Comparison
+        c1, c2, c3 = st.columns(3)
+        c1.metric("FCM Silhouette", f"{result.silhouette_score:.3f}")
+        c2.metric("K-Means Silhouette", f"{km_result.silhouette_score:.3f}")
+        c3.metric("Adjusted Rand Index", f"{agreement:.3f}", help="Measures similarity between two clusterings (1.0 is perfect agreement)")
+
+        # Visual Comparison
+        col_x2, col_y2 = st.columns(2)
+        feat_x2 = col_x2.selectbox("X Axis ", features, index=0, key="comp_x")
+        feat_y2 = col_y2.selectbox("Y Axis ", features, index=min(1, len(features)-1), key="comp_y")
+        
+        st.plotly_chart(
+            plot_model_comparison(normalized_df, result.labels, km_result.labels, feat_x2, feat_y2),
+            use_container_width=True
+        )
+
+        # Portfolio Insights
+        st.info("### 🎓 Portfolio Note: Why Fuzzy C-Means?")
+        col_left, col_right = st.columns(2)
+        with col_left:
+            st.markdown("""
+            **Standard K-Means (Hard)**
+            - Every customer belongs to exactly **one** cluster.
+            - Great for simple segmentation.
+            - Fails to capture customers who are "on the fence" between two behaviors.
+            """)
+        with col_right:
+            st.markdown("""
+            **Fuzzy C-Means (Soft)**
+            - Customers have a **membership degree** (0-1) for every cluster.
+            - Identifies 'Ambiguous' customers (those with ~0.5 membership in two groups).
+            - Provides a more nuanced view of customer transitions.
+            """)
+
