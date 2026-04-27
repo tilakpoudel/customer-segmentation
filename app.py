@@ -36,6 +36,15 @@ from src.comparisons import run_kmeans, calculate_agreement
 # Initialize logging
 logger = setup_logging()
 
+# Initialize session state for analysis results and processing state
+if "analysis_results" not in st.session_state:
+    st.session_state.analysis_results = None
+if "processing" not in st.session_state:
+    st.session_state.processing = False
+
+def start_processing():
+    st.session_state.processing = True
+
 # Page configuration
 st.set_page_config(**PAGE_CONFIG)
 
@@ -150,7 +159,14 @@ use_r = st.sidebar.checkbox("Recency", value=True, help="Days since the customer
 use_f = st.sidebar.checkbox("Frequency", value=True, help="Total number of unique orders made.")
 use_m = st.sidebar.checkbox("Monetary", value=True, help="Total revenue generated from this customer.")
 
-run_button = st.sidebar.button("🚀 Start Segmentation Analysis", width="stretch")
+run_button = st.sidebar.button(
+    "🚀 Start Segmentation Analysis", 
+    width="stretch",
+    on_click=start_processing,
+    disabled=st.session_state.processing,
+    help="Click to start data cleaning and clustering."
+)
+
 
 st.sidebar.markdown("---")
 st.sidebar.caption("⚖️ **Disclaimer**: This tool is for analytical purposes. Results should be validated by stakeholders before making financial commitments.")
@@ -162,100 +178,130 @@ st.markdown("### Production-Grade Fuzzy C-Means Clustering on RFM Data")
 
 with st.expander("📖 How to use this App", expanded=True):
     st.markdown("""
-    Welcome! This tool uses **Fuzzy Logic** to segment your customers based on their buying behavior (**RFM Analysis**).
-    
-    ### 🛠️ Quick Start
     1. **Choose Data Source**: Select an option in the sidebar (UCI Dataset is best for first-time use).
     2. **Set Parameters**: Adjust the number of clusters (k) and Fuzziness (m).
     3. **Run Analysis**: Click **'🚀 Start Segmentation Analysis'** in the sidebar.
+    
+    ### 🔍 What do the tabs show?
+    - **📊 Data & RFM**: Your raw transactions converted into Recency, Frequency, and Monetary scores.
+    - **🔬 Clustering Results**: The main grouping of your customers.
+    - **🗺️ Membership Analysis**: Discover 'Ambiguous' customers who sit between two segments.
+    - **👤 Predict Customer**: Enter data for a new customer to see which segment they join.
+    - **💡 Business Insights**: Revenue-at-risk and specific marketing recommendations.
+    - **⚖️ Model Comparison**: Comparison between this model and standard K-Means.
     """)
 
-# We want to wait for the run_button to do everything
-if run_button:
+# We want to wait for the run_button (via session_state) to do everything
+if st.session_state.processing:
+    # Visual feedback: dim the background and disable pointer events
+    st.markdown("""
+        <style>
+        [data-testid="stAppViewContainer"] {
+            opacity: 0.6;
+            pointer-events: none;
+            transition: opacity 0.5s;
+        }
+        [data-testid="stSidebar"] {
+            pointer-events: none;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+    
     df_raw = None
     
-    # 1. Load Data
-    try:
-        if data_source == "Generate Random Data":
-            df_raw = get_sample_data()
-        elif data_source == "Use UCI Dataset (Real)":
-            df_raw = pd.read_excel(DEFAULT_DATA_PATH)
-        elif uploaded_file:
-            if uploaded_file.name.endswith(".xlsx"):
-                df_raw = pd.read_excel(uploaded_file)
-            else:
-                df_raw = pd.read_csv(uploaded_file)
-            
-            # Fix PyArrow/Streamlit serialization issues
-            for col in ["StockCode", "Description"]:
-                if col in df_raw.columns:
-                    df_raw[col] = df_raw[col].astype(str)
-        else:
-            st.warning("Please upload a file or select a data source.")
-            st.stop()
-            
-        if df_raw is not None:
-            if not validate_columns(df_raw):
-                st.stop()
-    except Exception as e:
-        st.error(f"❌ Error loading data: {e}")
-        st.stop()
-
-    # 2. Process Data
-    if df_raw is not None:
+    with st.status("🚀 Processing Customer Segmentation...", expanded=True) as status:
+        # 1. Load Data
+        status.write("📂 Loading dataset from source...")
         try:
-            # Preprocessing
-            with st.spinner("Cleaning data and computing RFM..."):
-                rfm_df = cached_preprocessing(df_raw)
-            
-            # Feature filtering
-            features = []
-            if use_r: features.append(RFM_CONFIG["recency_col"])
-            if use_f: features.append(RFM_CONFIG["frequency_col"])
-            if use_m: features.append(RFM_CONFIG["monetary_col"])
-            
-            if not features:
-                st.warning("Please select at least one feature in the sidebar.")
+            if data_source == "Generate Random Data":
+                df_raw = get_sample_data()
+            elif data_source == "Use UCI Dataset (Real)":
+                df_raw = pd.read_excel(DEFAULT_DATA_PATH)
+            elif uploaded_file:
+                if uploaded_file.name.endswith(".xlsx"):
+                    df_raw = pd.read_excel(uploaded_file)
+                else:
+                    df_raw = pd.read_csv(uploaded_file)
+                
+                # Fix PyArrow/Streamlit serialization issues
+                for col in ["StockCode", "Description"]:
+                    if col in df_raw.columns:
+                        df_raw[col] = df_raw[col].astype(str)
+            else:
+                st.warning("Please upload a file or select a data source.")
                 st.stop()
                 
-            rfm_subset = rfm_df[features]
-            
-            # Normalization
-            normalized_df, scaler = normalize_rfm(rfm_subset, log_transform=RFM_CONFIG["log_transform"])
-            
-            # Run Clustering
-            model_params = {
-                "n_clusters": k,
-                "fuzziness": m,
-                "max_iter": CLUSTERING["max_iter"],
-                "error": CLUSTERING["error_tolerance"],
-                "random_state": CLUSTERING["random_state"]
-            }
-            
-            result = cached_model_execution(normalized_df.values, model_params)
-            cluster_meta = label_clusters(result.centers, features)
-            cluster_names = [f"Cluster {i}: {m['label']}" for i, m in enumerate(cluster_meta)]
-            
-            ambiguous_df = get_ambiguous_customers(result.membership_matrix, rfm_df.index, AMBIGUITY_THRESHOLD)
-            summary = generate_business_summary(rfm_df, result.labels, cluster_meta, len(ambiguous_df))
-            
-            # Store in session state
-            st.session_state.analysis_results = {
-                "df_raw": df_raw,
-                "rfm_df": rfm_df,
-                "normalized_df": normalized_df,
-                "result": result,
-                "cluster_meta": cluster_meta,
-                "cluster_names": cluster_names,
-                "ambiguous_df": ambiguous_df,
-                "summary": summary,
-                "features": features,
-                "scaler": scaler
-            }
+            if df_raw is not None:
+                if not validate_columns(df_raw):
+                    st.stop()
         except Exception as e:
-            st.error(f"Clustering failed: {e}")
-            logger.exception("Clustering error")
+            st.error(f"❌ Error loading data: {e}")
             st.stop()
+
+        # 2. Process Data
+        if df_raw is not None:
+            try:
+                # Preprocessing
+                status.write("🧹 Cleaning transaction data and computing RFM metrics...")
+                rfm_df = cached_preprocessing(df_raw)
+                
+                # Feature filtering
+                features = []
+                if use_r: features.append(RFM_CONFIG["recency_col"])
+                if use_f: features.append(RFM_CONFIG["frequency_col"])
+                if use_m: features.append(RFM_CONFIG["monetary_col"])
+                
+                if not features:
+                    st.warning("Please select at least one feature in the sidebar.")
+                    st.stop()
+                    
+                rfm_subset = rfm_df[features]
+                
+                # Normalization
+                status.write("⚖️ Normalizing and scaling features...")
+                normalized_df, scaler = normalize_rfm(rfm_subset, log_transform=RFM_CONFIG["log_transform"])
+                
+                # Run Clustering
+                status.write("🔬 Training Fuzzy C-Means model...")
+                model_params = {
+                    "n_clusters": k,
+                    "fuzziness": m,
+                    "max_iter": CLUSTERING["max_iter"],
+                    "error": CLUSTERING["error_tolerance"],
+                    "random_state": CLUSTERING["random_state"]
+                }
+                
+                result = cached_model_execution(normalized_df.values, model_params)
+                cluster_meta = label_clusters(result.centers, features)
+                cluster_names = [f"Cluster {i}: {m['label']}" for i, m in enumerate(cluster_meta)]
+                
+                status.write("📊 Generating membership analysis and insights...")
+                ambiguous_df = get_ambiguous_customers(result.membership_matrix, rfm_df.index, AMBIGUITY_THRESHOLD)
+                summary = generate_business_summary(rfm_df, result.labels, cluster_meta, len(ambiguous_df))
+                
+                # Store in session state
+                st.session_state.analysis_results = {
+                    "df_raw": df_raw,
+                    "rfm_df": rfm_df,
+                    "normalized_df": normalized_df,
+                    "result": result,
+                    "cluster_meta": cluster_meta,
+                    "cluster_names": cluster_names,
+                    "ambiguous_df": ambiguous_df,
+                    "summary": summary,
+                    "features": features,
+                    "scaler": scaler
+                }
+                status.update(label="✅ Analysis Complete!", state="complete", expanded=False)
+                
+                # Processing finished
+                st.session_state.processing = False
+                st.rerun()
+            except Exception as e:
+                st.error(f"Clustering failed: {e}")
+                logger.exception("Clustering error")
+                st.session_state.processing = False
+                st.stop()
 
 # --- Display Logic ---
 if "analysis_results" in st.session_state and st.session_state.analysis_results is not None:
@@ -414,7 +460,7 @@ if "analysis_results" in st.session_state and st.session_state.analysis_results 
         )
 
         # Portfolio Insights
-        st.info("### 🎓 Portfolio Note: Why Fuzzy C-Means?")
+        st.info("### 🎓 Why Fuzzy C-Means?")
         col_left, col_right = st.columns(2)
         with col_left:
             st.markdown("""
