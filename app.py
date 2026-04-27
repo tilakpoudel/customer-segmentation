@@ -142,6 +142,11 @@ elif uploaded_file:
         else:
             df_raw = pd.read_csv(uploaded_file)
             
+        # Fix PyArrow/Streamlit serialization issues for mixed-type columns
+        for col in ["StockCode", "Description"]:
+            if col in df_raw.columns:
+                df_raw[col] = df_raw[col].astype(str)
+                
         if not validate_columns(df_raw):
             df_raw = None
             st.stop()

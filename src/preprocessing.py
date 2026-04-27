@@ -49,6 +49,11 @@ def clean_data(df: pd.DataFrame) -> pd.DataFrame:
     # Ensure CustomerID is integer (it often loads as float)
     df_clean["CustomerID"] = df_clean["CustomerID"].astype(int)
     
+    # Ensure StockCode and Description are strings for Arrow compatibility
+    for col in ["StockCode", "Description"]:
+        if col in df_clean.columns:
+            df_clean[col] = df_clean[col].astype(str)
+    
     # Remove negative or zero Quantity and UnitPrice
     df_clean = df_clean[(df_clean["Quantity"] > 0) & (df_clean["UnitPrice"] > 0)]
     
